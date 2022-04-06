@@ -1,0 +1,89 @@
+service: notify-app
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  region: us-west-2
+  stage: dev
+  memorySize: 128
+  timeout: 5
+  environment:
+    UPDATES_TABLE: ${self:service}-${self:provider.stage}-${self:custom.updatesTable}
+    CONNECTION_TABLE: ${self:service}-${self:provider.stage}-${self:custom.connTable}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:*
+      Resource: '*'
+
+functions:
+  websocket-connect:
+    handler: lambdas/notify/connect.handler
+    events:
+      - websocket:
+          route: $connect
+  websocket-disconnect:
+    handler: lambdas/notify/disconnect.handler
+    events:
+      - websocket:
+          route: $disconnect
+  websocket-default:
+    handler: lambdas/notify/default.handler
+    events:
+      - websocket:
+          route: $default
+  websocket-message:
+    handler: lambdas/notify/message.handler
+    events:
+      - websocket:
+          route: message
+
+resources:
+  Resources:
+    WebsocketTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.CONNECTION_TABLE}
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+    UpdatesTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        TableName: ${self:provider.environment.UPDATES_TABLE}
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: N
+          - AttributeName: updatedAt
+            AttributeType: N
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: createdAt
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        GlobalSecondaryIndexes:
+          - IndexName: updatedAt-index
+            KeySchema:
+              - AttributeName: updatedAt
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+            ProvisionedThroughput:
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+
+custom:
+  updatesTable: updates
+  connTable: connection
